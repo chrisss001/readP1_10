@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>华文识字闯关 - 修复增强版</title>
+    <style>
+        body {
+            text-align: center;
+            font-family: "Microsoft YaHei", "SimHei", sans-serif;
+            background: linear-gradient(135deg, #FFDEE9 0%, #B5FFFC 100%);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            width: 92%;
+            max-width: 550px;
+            padding: 40px 15px;
+            border-radius: 50px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            border: 10px solid #FFFFFF;
+        }
+
+        h2 { color: #FF7E5F; font-size: 30px; margin-bottom: 10px; text-shadow: 2px 2px 0px #FFEBB7; }
+        #progress { color: #999; font-size: 14px; margin-bottom: 10px; font-weight: bold; }
+
+        #word {
+            font-size: 75px;
+            margin: 20px 0;
+            color: #333;
+            font-weight: bold;
+            text-shadow: 4px 4px 0px #FFD1D1;
+            min-height: 120px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            line-height: 1.2;
+        }
+
+        #pinyin { font-size: 32px; color: #48C6EF; font-weight: bold; min-height: 45px; margin-bottom: 10px; }
+
+        #status {
+            font-size: 16px;
+            color: #666;
+            background: #F0F8FF;
+            padding: 12px 20px;
+            border-radius: 30px;
+            margin-bottom: 20px;
+            display: inline-block;
+            min-height: 24px;
+        }
+
+        button {
+            padding: 15px 35px; font-size: 22px; margin: 10px; border: none;
+            border-radius: 40px; cursor: pointer; font-weight: bold;
+            color: white; transition: all 0.2s; box-shadow: 0 8px 0px #CCC;
+        }
+        #startBtn { background-color: #ff9a9e; box-shadow: 0 8px 0px #f6416c; }
+        #nextBtn { background-color: #667eea; box-shadow: 0 8px 0px #764ba2; }
+        #hintBtn { background-color: #f6d365; box-shadow: 0 8px 0px #fda085; color: #666; }
+        button:active { transform: translateY(4px); box-shadow: 0 2px 0px #CCC; }
+
+        .reward-text {
+            font-size: 36px;
+            font-weight: bold;
+            background: linear-gradient(to right, #ff4757, #ffa502, #2ed573, #1e90ff, #ff4757);
+            -webkit-background-clip: text;
+            color: transparent;
+            margin: 15px auto;
+            animation: pop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes pop { 0% { transform: scale(0.5); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+        .watermark { position: fixed; bottom: 15px; right: 15px; font-size: 12px; color: #FF6B6B; background: rgba(255,255,255,0.7); padding: 5px 10px; border-radius: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>🦁 华文识字闯关 🦁</h2>
+    <div id="progress">第 1 / 15 关</div>
+    <div id="status">点击开始按钮开始！</div>
+
+    <div id="word">Ready?</div>
+    <div id="pinyin"></div>
+    <div id="reward"></div>
+
+    <div id="btnGroup">
+        <button onclick="initSystem()" id="startBtn">🚀 开始闯关</button>
+        <button onclick="showHint()" id="hintBtn" style="display:none;">💡 拼音提示</button>
+        <button onclick="nextWord()" id="nextBtn" style="display:none;">下一关 ➜</button>
+    </div>
+</div>
+
+<div class="watermark">🏫 常老师华文课堂</div>
+
+<script>
+// 修正了拼音并添加了识别别名以增强兼容性
+const words = [
+    {han:"日月", py:"rì yuè"},
+    {han:"天地", py:"tiān dì"},
+    {han:"大风 ( )", py:"dà fēng", alias:["大风"]},
+    {han:"打雷", py:"dǎ léi"},
+    {han:"水电", py:"shuǐ diàn"},
+    {han:"一寸", py:"yí cùn", alias:["1寸", "移存", "一存"]}, // 强化二声变调识别
+    {han:"方方的", py:"fāng fāng de"},
+    {han:"正反", py:"zhèng fǎn"},
+    {han:"白云", py:"bái yún"},
+    {han:"好人", py:"hǎo rén"},
+    {han:"坏人", py:"huài rén"},
+    {han:"对得 ( )", py:"duì de", alias:["对的", "对得"]}, // 兼容“的”和“得”
+    {han:"古", py:"gǔ"},
+    {han:"旧的尺", py:"jiù de chǐ"},
+    {han:"没有", py:"méi yǒu"}
+];
+
+let index = 0;
+let recognition;
+let useMic = false;
+let audioCtx;
+
+function playSound(type) {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    if (type === 'success') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(523.25, audioCtx.currentTime); 
+        osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.1); 
+        gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.4);
+    } else {
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.3);
+    }
+}
+
+async function initSystem() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    document.getElementById("startBtn").style.display = "none";
+    
+    try {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) throw new Error();
+        
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+        recognition = new SpeechRecognition();
+        recognition.lang = "zh-CN";
+        recognition.interimResults = false;
+
+        recognition.onresult = (event) => {
+            let result = event.results[0][0].transcript.replace(/[，。？！\s\.,\?!]/g, "");
+            let target = words[index].han.replace(/\(.*\)/g, "").trim();
+            let alias = words[index].alias || [];
+            
+            console.log("识别到:", result, "目标词:", target);
+
+            // 增强判断：直接包含目标 OR 包含任意别名 OR 目标包含识别结果(针对短促发音)
+            const isMatch = result.includes(target) || 
+                            target.includes(result) || 
+                            alias.some(a => result.includes(a) || a.includes(result));
+
+            if (isMatch && result.length >= 1) {
+                success();
+            } else {
+                playSound('fail');
+                document.getElementById("status").innerHTML = `识别为“${result}”<br>请再试一次！`;
+            }
+        };
+
+        recognition.onend = () => {
+            if (useMic && document.getElementById("nextBtn").style.display === "none") {
+                try { recognition.start(); } catch(e) {}
+            }
+        };
+
+        useMic = true;
+        document.getElementById("status").innerHTML = "🎤 麦克风已开启，请朗读";
+    } catch (err) {
+        useMic = false;
+        document.getElementById("status").innerHTML = "👇 请直接点击汉字通关";
+        document.getElementById("word").onclick = () => {
+            if (document.getElementById("nextBtn").style.display === "none") success();
+        };
+    }
+    showWord();
+}
+
+function showWord() {
+    if (index >= words.length) { finishGame(); return; }
+    document.getElementById("progress").innerText = `第 ${index + 1} / ${words.length} 关`;
+    document.getElementById("word").innerText = words[index].han;
+    document.getElementById("pinyin").innerText = "";
+    document.getElementById("reward").innerHTML = "";
+    document.getElementById("nextBtn").style.display = "none";
+    document.getElementById("hintBtn").style.display = "inline-block";
+    
+    if (useMic) {
+        try { recognition.start(); } catch(e) {}
+    }
+}
+
+function success() {
+    playSound('success');
+    document.getElementById("pinyin").innerText = words[index].py;
+    document.getElementById("status").innerHTML = "🎉 读得非常标准！";
+    document.getElementById("reward").innerHTML = `<div class="reward-text">⭐ 挑战成功 ⭐</div>`;
+    document.getElementById("nextBtn").style.display = "inline-block";
+    document.getElementById("hintBtn").style.display = "none";
+}
+
+function nextWord() {
+    index++;
+    showWord();
+}
+
+function showHint() {
+    document.getElementById("pinyin").innerText = words[index].py;
+}
+
+function finishGame() {
+    document.getElementById("word").innerHTML = "🏆";
+    document.getElementById("pinyin").innerText = "";
+    document.getElementById("status").innerHTML = "恭喜，全部通关！";
+    document.getElementById("reward").innerHTML = "<div class='reward-text'>👑 识字小状元 👑</div>";
+    document.getElementById("nextBtn").style.display = "none";
+    document.getElementById("hintBtn").style.display = "none";
+}
+</script>
+
+</body>
+</html>
